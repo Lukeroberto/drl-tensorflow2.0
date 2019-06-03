@@ -13,13 +13,15 @@ class DQN:
     
     def __init__(self, params=None):
         
-        self.max_steps = 1000
+        self.max_steps = 50
         if params:
             self.gamma, self.epsilon, self.epsilon_min, self.epsilon_decay, self.learning_rate= params
+            self.epsilon_max = params[1]
         
         else:
             self.gamma = 0.95    # discount rate
             self.epsilon = 1.0  # exploration rate
+            self.epsilon_max = 1.0
             self.epsilon_min = 0.01
             self.epsilon_decay = 0.995
             self.learning_rate = 0.001
@@ -38,12 +40,13 @@ class DQN:
         rewards = np.zeros(num_episodes)
         ep_lengths = np.zeros(num_episodes)
         
-        pbar = tqdm(range(num_episodes), desc="Episode #: ")
+        pbar = tqdm(range(num_episodes))
         for ep in pbar:
             
             # Reset env
             state_t = env.reset()
-            state_t = np.reshape(state_t, (1, state_t.size))
+            state_t = np.reshape(state_t, (1, np.size(state_t)))
+
             done = False
             while not done:
                 
@@ -52,25 +55,28 @@ class DQN:
                 
                 # Step environment
                 state_t_prime, reward, done, _ = env.step(action_t)
-                state_t_prime = np.reshape(state_t_prime, (1, state_t_prime.size))
+                state_t_prime = np.reshape(state_t_prime, (1, np.size(state_t_prime)))
                 
                 # Store transition in replay buffer
-                self.__remember(state_t, action_t, reward, state_t_prime, done)
+                self.__remember(state_t.astype(np.float32), action_t, reward, state_t_prime.astype(np.float32), done)
                 
                 # Sample a batch from replay buffer
                 if len(self.memory) > batch_size:
                     self.__replay(batch_size)
                     
-                
                 rewards[ep] += reward
                 ep_lengths[ep] += 1
-                
-                if ep > 0:
-                    pbar.set_description(f"Ave. Reward: {np.mean(rewards[:ep]):.2f}, Epsilon: {self.epsilon:.2f}")
-                
                 # Stop episode if done
-                if done:
+                if done or ep_lengths[ep] == self.max_steps:
                     break
+                    
+            # Linear Schedule
+            new_eps = self.epsilon - (self.epsilon_max - self.epsilon_min) / self.epsilon_decay
+            self.epsilon = max(self.epsilon_min, new_eps)
+
+            if ep > 0:
+                pbar.set_description(f"Cum. Reward: {rewards.sum()}, Epsilon: {self.epsilon:.2f}")
+#                 pbar.set_description(f"Ave. Reward: {np.mean(rewards[max(ep - 25, 0):min(ep + 25, num_episodes)]):.2f}, Epsilon: {self.epsilon:.2f}")
                     
         return rewards, ep_lengths
                     
@@ -124,12 +130,11 @@ class DQN:
             if not done:
                 target = (reward + self.gamma *
                           np.amax(self.q_network.predict(next_state)[0]))
-            target_f = self.q_network.predict(state)
-            target_f[0][action] = target
-            self.q_network.fit(state, target_f, epochs=1, verbose=0)
+#             target_f = self.q_network.predict(state)
+#             target_f[0][action] = target
+            estimate = self.q_network.predict(state)[0][action]
+            self.q_network.fit(np.array([estimate]), np.array([target]), epochs=1, verbose=0)
         
-        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
-
     def load(self, name):
         self.q_network.load_weights(name)
 

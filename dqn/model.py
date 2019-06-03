@@ -11,8 +11,8 @@ class Model(tf.keras.Model):
         self.output_dim = output_dim
         
         # Two Hidden Layers
-        self.hidden1 = kl.Dense(32, activation='relu')
-        self.hidden2 = kl.Dense(32, activation='relu')
+        self.hidden1 = kl.Dense(16, activation='relu')
+        self.hidden2 = kl.Dense(8, activation='relu')
         
         # Outputs Q Values
         self.q_vals = kl.Dense(self.output_dim, activation='linear')
