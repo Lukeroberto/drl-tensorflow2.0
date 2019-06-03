@@ -1,3 +1,8 @@
+import numpy as np
+
+import tensorflow as tf
+import tensorflow.keras as keras
+
 class DQN:
     
     def __init__(self):
