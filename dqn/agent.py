@@ -2,6 +2,7 @@ import random
 from collections import deque
 import numpy as np
 from tqdm import tqdm_notebook as tqdm
+from datetime import datetime
 
 import tensorflow as tf
 import tensorflow.keras as keras
@@ -30,16 +31,24 @@ class DQN:
         self.action_size = env.action_space.n
         
         # Initialize Replay buffer
-        self.memory = deque(maxlen=2000)
+        self.memory = deque(maxlen=10000)
+        
+        rewards = np.zeros(num_episodes)
+        ep_lengths = np.zeros(num_episodes)
         
         # Initialize Q Function
         self.q_network = Model(self.action_size)
         self.q_network.compile(loss='mse', optimizer=Adam(lr=self.learning_rate))
         
         # Logging
-        rewards = np.zeros(num_episodes)
-        ep_lengths = np.zeros(num_episodes)
+        now = datetime.now()
+        self.log_dir = "tf_logs/" + now.strftime("%Y%m%d-%H%M") + "/"
+        self.tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=self.log_dir + "fit/", update_freq="epochs") 
         
+        
+        self.file_writer = tf.summary.create_file_writer(self.log_dir + "/metrics")
+        self.file_writer.set_as_default()
+
         pbar = tqdm(range(num_episodes))
         for ep in pbar:
             
@@ -60,12 +69,17 @@ class DQN:
                 # Store transition in replay buffer
                 self.__remember(state_t.astype(np.float32), action_t, reward, state_t_prime.astype(np.float32), done)
                 
+                # Log scalars
+                rewards[ep] += reward
+                ep_lengths[ep] += 1
+                tf.summary.scalar('reward', data=rewards[ep], step=ep)
+                tf.summary.scalar('episode length', data=ep_lengths[ep], step=ep)
+                
                 # Sample a batch from replay buffer
                 if len(self.memory) > batch_size:
                     self.__replay(batch_size)
                     
-                rewards[ep] += reward
-                ep_lengths[ep] += 1
+                
                 # Stop episode if done
                 if done or ep_lengths[ep] == self.max_steps:
                     break
@@ -133,7 +147,11 @@ class DQN:
 #             target_f = self.q_network.predict(state)
 #             target_f[0][action] = target
             estimate = self.q_network.predict(state)[0][action]
-            self.q_network.fit(np.array([estimate]), np.array([target]), epochs=1, verbose=0)
+            self.q_network.fit(np.array([estimate]), 
+                               np.array([target]), 
+                               epochs=1, 
+                               verbose=0, 
+                               callbacks=[self.tensorboard_callback])
         
     def load(self, name):
         self.q_network.load_weights(name)
